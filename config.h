@@ -1,0 +1,3 @@
+#pragma once
+#define MAX_ITEMS_ALLOWED 100
+#define CAMERA_NAME_STRING_SIZE 100
