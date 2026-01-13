@@ -2,7 +2,6 @@
 
 #include "imgui_md_wrapper/imgui_md_wrapper.h"
 #include "immapp/immapp.h"
-#include "opencv2/imgcodecs.hpp"
 #include "state.h"
 
 static ImGuiTableFlags table_flags = ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollX;

@@ -1,14 +1,11 @@
 #include "immapp/immapp.h"
-#include "immvision/immvision.h"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
 
-#include <fstream>
 #include <math.h>
 #include "state.h"
 #include "CameraIO.h"
 #include "Markdown.h"
-#include "HyperSpectral.h"
 #include "ImGuiExtensions.h"
 
 #define M_PI   3.14159265358979323846264338327950288f
@@ -284,7 +281,117 @@ void CameraDistanceCalculationView(AppState* state)
 
 		float workingDist = (longestObjectLength / 2) / tanf(DegToRad(openingAngle / 2));
 
-		ImGui::InputFloat("Working distance (mm)##opening angle", &workingDist, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputFloat("Working distance (mm)##wd", &workingDist, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+	}
+}
+
+void CameraFocalLengthCalculationView(AppState* state)
+{
+	static uint8_t propSelectedCamera = 0;
+	static uint8_t propSelectedFocal = 0;
+	static int32_t objectLength = 400;
+	static int32_t objectWidth = 300;
+	static float workingDistance = 100.f;
+	static float openingAngle = 10.f;
+	static bool useDiagonal = true;
+
+	static CameraProperties cprop = {0};
+
+	static bool cameraManualInput = false;
+	static bool lensManualInput = false;
+
+	ImGui::SeparatorText("Object information");
+
+	ImGui::InputInt("Object length (mm)", &objectLength, 0);
+	ImGui::InputInt("Object width (mm)", &objectWidth, 0);
+
+	ImGui::SeparatorText("Working distance (mm)");
+
+	ImGui::InputFloat("##wd_input", &workingDistance);
+
+	ImGui::SeparatorText("Camera and lens settings");
+	ImGui::Text("Camera settings");
+	if (state->cameras.itemsStored == 0)
+		ImGui::Text("No camera's configured");
+	else {
+		if (cameraManualInput)
+			ImGui::BeginDisabled();
+
+		const char* combo_val = state->cameras.name[propSelectedCamera];
+		if (ImGui::BeginCombo("Camera", combo_val))
+		{
+			for (int n = 0; n < state->cameras.itemsStored; n++)
+			{
+				const bool is_selected = (propSelectedCamera == n);
+				if (ImGui::Selectable(state->cameras.name[n], is_selected))
+					propSelectedCamera = n;
+
+				if (is_selected)
+					ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+
+		if (cameraManualInput)
+			ImGui::EndDisabled();
+
+		ImGui::Checkbox("Manual input##camera", &cameraManualInput);
+
+		if (!cameraManualInput) {
+			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.6f);
+			ImGui::InputFloat("Pixel size (um)", &state->cameras.cProps[propSelectedCamera].pixelSize, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputFloat("Sensor diagonal (mm)", &state->cameras.cProps[propSelectedCamera].sensorDiagonal, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputFloat("Sensor width (mm)", &state->cameras.cProps[propSelectedCamera].sensorWidth, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputFloat("Sensor height (mm)", &state->cameras.cProps[propSelectedCamera].sensorHeight, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputInt("Pixel width", &state->cameras.cProps[propSelectedCamera].pixelWidth, 0, 100, ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputInt("Pixel height", &state->cameras.cProps[propSelectedCamera].pixelHeight, 0, 100, ImGuiInputTextFlags_ReadOnly);
+			ImGui::PopStyleVar();
+			cprop = state->cameras.cProps[propSelectedCamera];
+		}
+		else {
+			bool changed = false;
+			changed = ImGui::InputFloat("Pixel size (um)", &cprop.pixelSize, 0.0f, 0.0f, "%.3f") ? !changed : changed;
+			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.6f);
+			ImGui::InputFloat("Sensor diagonal (mm)", &cprop.sensorDiagonal, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputFloat("Sensor width (mm)", &cprop.sensorWidth, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputFloat("Sensor height (mm)", &cprop.sensorHeight, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+			ImGui::PopStyleVar();
+			changed = ImGui::InputInt("Pixel width", &cprop.pixelWidth, 0, 100) ? !changed : changed;
+			changed = ImGui::InputInt("Pixel height", &cprop.pixelHeight, 0, 100) ? !changed : changed;
+
+			if (changed) {
+				cprop.sensorWidth = (cprop.pixelSize / 1000.f) * cprop.pixelWidth;
+				cprop.sensorHeight = (cprop.pixelSize / 1000.f) * cprop.pixelHeight;
+				cprop.sensorDiagonal = sqrtf(cprop.sensorWidth * cprop.sensorWidth + cprop.sensorHeight * cprop.sensorHeight);
+			}
+		}
+
+		ImGui::SeparatorText("Calculated focal length");
+
+		float selectedCameraSensorWidth = 0.f;
+		float selectedCameraSensorHeight = 0.f;
+
+		if (!cameraManualInput) {
+			selectedCameraSensorWidth = state->cameras.cProps[propSelectedCamera].sensorWidth;
+			selectedCameraSensorHeight = state->cameras.cProps[propSelectedCamera].sensorHeight;
+		}
+		else {
+			selectedCameraSensorWidth = cprop.sensorWidth;
+			selectedCameraSensorHeight = cprop.sensorHeight;
+		}
+
+		float focalLength1 = workingDistance * (selectedCameraSensorWidth / objectLength);
+		float focalLength2 = workingDistance * (selectedCameraSensorHeight / objectWidth);
+
+		float focalLength3 = workingDistance * (selectedCameraSensorWidth / objectWidth);
+		float focalLength4 = workingDistance * (selectedCameraSensorHeight / objectLength);
+
+		float focalLength12 = fminf(focalLength1, focalLength2);
+		float focalLength34 = fminf(focalLength3, focalLength4);
+
+		float focalLength = fmaxf(focalLength12, focalLength34);
+
+		ImGui::InputFloat("Focal length (mm)##focal", &focalLength, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
 	}
 }
 
@@ -377,25 +484,76 @@ void CameraPrecisionCalculationView(AppState* state) {
 
 	ImGui::InputFloat("##Workdist", &workingDistance, 0.0f, 0.0f, "%.3f");
 
-	ImGui::SeparatorText("Precision (mm)");
+	ImGui::SeparatorText("Precision (mm/pixel)");
 
 	float precision = (cprop.pixelSize / 1000) * (workingDistance - focalLength) / focalLength;
 
 	ImGui::InputFloat("##Precision", &precision, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
 }
 
+void CameraFPSCalculationView(AppState* state) {
+	static float beltSpeed = 10.f;
+	static float minDistanceBetweenObjects = 50.f;
+
+	static CameraProperties cprop = { 0 };
+
+	ImGui::SeparatorText("Conveyor and Product settings");
+
+	ImGui::InputFloat("Belt speed (mm/s)", &beltSpeed, 0.0f, 0.0f, "%.3f");
+	ImGui::InputFloat("Min distance between objects centers (mm)", &minDistanceBetweenObjects, 0.0f, 0.0f, "%.3f");
+
+	ImGui::SeparatorText("FPS");
+
+	float fps = beltSpeed / minDistanceBetweenObjects;
+
+	ImGui::InputFloat("Minimum required FPS", &fps, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+}
+
+void CameraExposureTimeCalculationView(AppState* state) {
+	static float precision = 1.f;
+	static float beltSpeed = 10.f;
+
+	static CameraProperties cprop = { 0 };
+
+	ImGui::SeparatorText("Conveyor and camera settings");
+
+	ImGui::InputFloat("Belt speed (mm/s)", &beltSpeed, 0.0f, 0.0f, "%.3f");
+	ImGui::InputFloat("Precision (mm/pixel)", &precision, 0.0f, 0.0f, "%.3f");
+
+	ImGui::SeparatorText("Exposure time (ms)");
+
+	float exposureTime = (precision / beltSpeed) * 1000;
+
+	ImGui::InputFloat("Max exposure time", &exposureTime, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+}
+
 void Gui(AppState* state)
 {
     if (ImGui::BeginTabBar("TabBarItems", ImGuiTabBarFlags_None))
     {
-        if (ImGui::BeginTabItem("Working distance calculation"))
+        if (ImGui::BeginTabItem("Working distance"))
         {
 			CameraDistanceCalculationView(state);
             ImGui::EndTabItem();
         }
+		if (ImGui::BeginTabItem("Focallength"))
+		{
+			CameraFocalLengthCalculationView(state);
+			ImGui::EndTabItem();
+		}
 		if (ImGui::BeginTabItem("Precision"))
 		{
 			CameraPrecisionCalculationView(state);
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("FPS"))
+		{
+			CameraFPSCalculationView(state);
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Exposure time"))
+		{
+			CameraExposureTimeCalculationView(state);
 			ImGui::EndTabItem();
 		}
         if (ImGui::BeginTabItem("Debug"))
@@ -484,6 +642,7 @@ int main(int, char**)
 		fclose(handle);
     }
 
+	// Prepare markdown pages
 	MyTreeNode daheng_camera_nodes[] = {
 		{ "MER2-160-227U3MC Datasheet",     NULL, 0, MER2_160_227U3MC_page    },
 		{ "MER2-2000-6GMC Datasheet",       NULL, 0, MER2_2000_6GMC_page      },
