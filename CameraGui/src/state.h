@@ -26,6 +26,20 @@ static const char* MER2_2000_6GMC_page =
 #include "MER2-2000-6GMC.md"
 ;
 
+static const char* MER2_503_23GMC_page =
+#include "MER2-503-23GMC(-P).md"
+;
+
+static const char* G234 =
+#include "MER2-503-23GMC(-P).md"
+;
+
+static const char* EFFI_FLEX_2_page =
+#include "EFFI-FLEX2.md"
+;
+
+
+
 
 struct CameraProperties
 {

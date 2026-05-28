@@ -1,8 +1,15 @@
-#include "immapp/immapp.h"
-#include "imgui.h"
+#ifndef IMPLOT_DISABLE_OBSOLETE_FUNCTIONS
+#define IMPLOT_DISABLE_OBSOLETE_FUNCTIONS
+#endif
+
 #include <GLFW/glfw3.h>
 
+#include "implot/implot.h"
+#include "immapp/immapp.h"
+#include "imgui.h"
+
 #include <math.h>
+#include "config.h"
 #include "state.h"
 #include "CameraIO.h"
 #include "Markdown.h"
@@ -115,6 +122,7 @@ void CameraWindow(AppState* state) {
 
 		AddOrUpdateCamera(&state->cameras, cameraName, &props);
 		memset(cameraName, '\0', CAMERA_NAME_STRING_SIZE);
+		ButtonOk = false;
 	}
 }
 
@@ -283,6 +291,133 @@ void CameraDistanceCalculationView(AppState* state)
 
 		ImGui::InputFloat("Working distance (mm)##wd", &workingDist, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
 	}
+}
+
+void CameraFoVCalulationView(AppState* state)
+{
+	static const float FOCAL_DISTANCES[] = { 4.0, 6.0, 8.0, 12.0, 16.0, 25.0, 35.0 };
+	static const char* FOCAL_DISTANCES_STR[] = { "4.0", "6.0", "8.0", "12.0", "16.0", "25.0", "35.0" };
+
+	static uint8_t propSelectedCamera = 0;
+	static uint8_t propSelectedFocal = 0;
+
+	static float horizontalFoV = 0.f;
+	static float verticalFoV = 0.f;
+
+	static float focalLength = 12.f;
+
+	static float workingDistance = 100.f;
+
+	static CameraProperties cprop = { 0 };
+
+	static bool cameraManualInput = false;
+	static bool lensManualInput = false;
+
+	ImGui::SeparatorText("Working distance (mm)");
+
+	ImGui::InputFloat("##wd_input", &workingDistance);
+
+	if (cameraManualInput)
+		ImGui::BeginDisabled();
+
+	const char* combo_val = state->cameras.name[propSelectedCamera];
+	if (ImGui::BeginCombo("Camera", combo_val))
+	{
+		for (int n = 0; n < state->cameras.itemsStored; n++)
+		{
+			const bool is_selected = (propSelectedCamera == n);
+			if (ImGui::Selectable(state->cameras.name[n], is_selected))
+				propSelectedCamera = n;
+
+			if (is_selected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	if (cameraManualInput)
+		ImGui::EndDisabled();
+
+	ImGui::Checkbox("Manual input##camera", &cameraManualInput);
+
+	if (!cameraManualInput) {
+		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.6f);
+		ImGui::InputFloat("Pixel size (um)", &state->cameras.cProps[propSelectedCamera].pixelSize, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputFloat("Sensor diagonal (mm)", &state->cameras.cProps[propSelectedCamera].sensorDiagonal, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputFloat("Sensor width (mm)", &state->cameras.cProps[propSelectedCamera].sensorWidth, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputFloat("Sensor height (mm)", &state->cameras.cProps[propSelectedCamera].sensorHeight, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputInt("Pixel width", &state->cameras.cProps[propSelectedCamera].pixelWidth, 0, 100, ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputInt("Pixel height", &state->cameras.cProps[propSelectedCamera].pixelHeight, 0, 100, ImGuiInputTextFlags_ReadOnly);
+		ImGui::PopStyleVar();
+		cprop = state->cameras.cProps[propSelectedCamera];
+	}
+	else {
+		bool changed = false;
+		changed = ImGui::InputFloat("Pixel size (um)", &cprop.pixelSize, 0.0f, 0.0f, "%.3f") ? !changed : changed;
+		ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.6f);
+		ImGui::InputFloat("Sensor diagonal (mm)", &cprop.sensorDiagonal, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputFloat("Sensor width (mm)", &cprop.sensorWidth, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::InputFloat("Sensor height (mm)", &cprop.sensorHeight, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::PopStyleVar();
+		changed = ImGui::InputInt("Pixel width", &cprop.pixelWidth, 0, 100) ? !changed : changed;
+		changed = ImGui::InputInt("Pixel height", &cprop.pixelHeight, 0, 100) ? !changed : changed;
+
+		if (changed) {
+			cprop.sensorWidth = (cprop.pixelSize / 1000.f) * cprop.pixelWidth;
+			cprop.sensorHeight = (cprop.pixelSize / 1000.f) * cprop.pixelHeight;
+			cprop.sensorDiagonal = sqrtf(cprop.sensorWidth * cprop.sensorWidth + cprop.sensorHeight * cprop.sensorHeight);
+		}
+	}
+
+	ImGui::Text("Lens settings");
+
+	if (lensManualInput)
+		ImGui::BeginDisabled();
+
+	const char* combo_val_dist = FOCAL_DISTANCES_STR[propSelectedFocal];
+	if (ImGui::BeginCombo("Focal length (mm)", combo_val_dist))
+	{
+		for (int n = 0; n < sizeof(FOCAL_DISTANCES) / sizeof(FOCAL_DISTANCES[0]); n++)
+		{
+			const bool is_selected = (propSelectedFocal == n);
+			if (ImGui::Selectable(FOCAL_DISTANCES_STR[n], is_selected))
+				propSelectedFocal = n;
+
+			if (is_selected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	if (lensManualInput)
+		ImGui::EndDisabled();
+
+	ImGui::Checkbox("Manual input##lens", &lensManualInput);
+
+	if (lensManualInput)
+		ImGui::InputFloat("##fd_input", &focalLength);
+	else
+		focalLength = FOCAL_DISTANCES[propSelectedFocal];
+
+	ImGui::SeparatorText("Calculated working distance");
+
+	float selectedCameraSensorWidth = 0.f;
+	float selectedCameraSensorHeight = 0.f;
+
+	if (!cameraManualInput) {
+		selectedCameraSensorWidth = state->cameras.cProps[propSelectedCamera].sensorWidth;
+		selectedCameraSensorHeight = state->cameras.cProps[propSelectedCamera].sensorHeight;
+	}
+	else {
+		selectedCameraSensorWidth = cprop.sensorWidth;
+		selectedCameraSensorHeight = cprop.sensorHeight;
+	}
+
+	horizontalFoV = workingDistance * selectedCameraSensorWidth / focalLength;
+	verticalFoV = workingDistance * selectedCameraSensorHeight / focalLength;
+
+	ImGui::InputFloat("Horizontal Fov##HFov", &horizontalFoV, 0.f, 0.f, "%.3f", ImGuiInputTextFlags_ReadOnly);
+	ImGui::InputFloat("Vertical Fov##VFov", &verticalFoV, 0.f, 0.f, "%.3f", ImGuiInputTextFlags_ReadOnly);
 }
 
 void CameraFocalLengthCalculationView(AppState* state)
@@ -536,6 +671,11 @@ void Gui(AppState* state)
 			CameraDistanceCalculationView(state);
             ImGui::EndTabItem();
         }
+		if (ImGui::BeginTabItem("FOV"))
+		{
+			CameraFoVCalulationView(state);
+			ImGui::EndTabItem();
+		}
 		if (ImGui::BeginTabItem("Focallength"))
 		{
 			CameraFocalLengthCalculationView(state);
@@ -644,29 +784,39 @@ int main(int, char**)
 
 	// Prepare markdown pages
 	MyTreeNode daheng_camera_nodes[] = {
-		{ "MER2-160-227U3MC Datasheet",     NULL, 0, MER2_160_227U3MC_page    },
-		{ "MER2-2000-6GMC Datasheet",       NULL, 0, MER2_2000_6GMC_page      },
-		{ "ME2P-1230-9GMC Datasheet",       NULL, 0, ME2P_1230_9GMC_page	  },
+		{ "MER2-160-227U3MC Datasheet",   NULL, 0, MER2_160_227U3MC_page },
+		{ "MER2-2000-6GMC Datasheet",     NULL, 0, MER2_2000_6GMC_page   },
+		{ "ME2P-1230-9GMC Datasheet",     NULL, 0, ME2P_1230_9GMC_page   },
+		{ "MER2-503-23GMC(-P) Datasheet", NULL, 0, MER2_503_23GMC_page}
 	};
 
 	MyTreeNode jai_camera_nodes[] = {
-		{ "FS-1600D-10GE Datasheet",        NULL, 0, FS_1600D_10GE_page       },
+		{ "FS-1600D-10GE Datasheet", NULL, 0, FS_1600D_10GE_page },
+	};
+
+	MyTreeNode Mako_camera_nodes[] = {
+		{ "Mako G-234", NULL, 0, }
 	};
 
 	MyTreeNode camera_datasheet_nodes[] = {
-		{ "Daheng Imaging",  daheng_camera_nodes, ARR_SIZE(daheng_camera_nodes), NULL},
-		{ "Jai camera's",    jai_camera_nodes,    ARR_SIZE(jai_camera_nodes), NULL},
+		{ "Daheng Imaging",  daheng_camera_nodes, ARR_SIZE(daheng_camera_nodes), NULL },
+		{ "Jai camera's",    jai_camera_nodes,    ARR_SIZE(jai_camera_nodes),    NULL },
 	};
 
-	MyTreeNode machine_vision_concepts[] = {
+	MyTreeNode lighting_datasheet_nodes[] = {
+		{ "Effiflex 2 datasheet", NULL, 0, EFFI_FLEX_2_page },
+	};
+
+	MyTreeNode machine_vision_concepts_nodes[] = {
 		{ "Working distance", NULL, 0, wd_page },
 	};
 
 	MyTreeNode TopNodes[] =
 	{
-		{ "Hello",                    NULL, 0, test_page },
-		{ "Machine vision concepts",  machine_vision_concepts, ARR_SIZE(machine_vision_concepts), NULL},
-		{ "Camera hardware",          camera_datasheet_nodes,  ARR_SIZE(camera_datasheet_nodes),  NULL},
+		{ "Test page",                NULL, 0, test_page },
+		{ "Machine vision concepts",  machine_vision_concepts_nodes, ARR_SIZE(machine_vision_concepts_nodes), NULL },
+		{ "Camera hardware",          camera_datasheet_nodes,		 ARR_SIZE(camera_datasheet_nodes),		  NULL },
+		{ "Lighting hardware",		  lighting_datasheet_nodes,		 ARR_SIZE(lighting_datasheet_nodes),	  NULL },
 	};
 
 	state.Nodes = TopNodes;
@@ -696,6 +846,7 @@ int main(int, char**)
 
     ImmApp::AddOnsParams add_ons;
     add_ons.withMarkdown = true;
+	add_ons.withImplot3d = true;
 
     ImmApp::Run(runner_params, add_ons);
 
